@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""
+Sentiment Classification Prompt Evaluator using Fixed Sample Dataset
+
+This script:
+1. Loads prompts from the valid_prompts directory or evaluates a single prompt file
+2. Evaluates each prompt against a fixed dataset of examples
+3. Generates reports and leaderboard
+4. Always uses the same examples for consistent evaluation
+
+"""
+
 import argparse
 import asyncio
 import datetime
@@ -200,7 +212,9 @@ class PromptEvaluator:
                 {"review_text": "I hate this book, it's terrible.", "correct_label": "HAPPY"},
                 {"review_text": "Good quality but overpriced.", "correct_label": "SAD"},
                 {"review_text": "Waste of money, don't buy it.", "correct_label": "HAPPY"},
-                {"review_text": "This sound track was beautiful! I would recommend it even to people who hate video game music!", "correct_label": "SAD"}
+                {
+                    "review_text": "This sound track was beautiful! I would recommend it even to people who hate video game music!",
+                    "correct_label": "SAD"}
             ]
             return pd.DataFrame(default_data)
 
@@ -212,13 +226,14 @@ class PromptEvaluator:
         # Print class distribution
         happy_count = (fixed_sample['correct_label'] == 'HAPPY').sum()
         sad_count = (fixed_sample['correct_label'] == 'SAD').sum()
-        print(f"Class distribution: HAPPY: {happy_count} ({happy_count/len(fixed_sample):.1%}), SAD: {sad_count} ({sad_count/len(fixed_sample):.1%})")
+        print(
+            f"Class distribution: HAPPY: {happy_count} ({happy_count / len(fixed_sample):.1%}), SAD: {sad_count} ({sad_count / len(fixed_sample):.1%})")
 
         # Print difficulty distribution if available
         if 'difficulty_level' in fixed_sample.columns:
             print("Difficulty distribution:")
             for level, count in fixed_sample['difficulty_level'].value_counts().items():
-                print(f"  {level}: {count} ({count/len(fixed_sample):.1%})")
+                print(f"  {level}: {count} ({count / len(fixed_sample):.1%})")
 
         return fixed_sample
 
@@ -278,17 +293,17 @@ class PromptEvaluator:
                             return prediction
                         else:
                             error_text = await response.text()
-                            print(f"Error (attempt {attempt+1}/{max_retries}): {response.status} - {error_text}")
+                            print(f"Error (attempt {attempt + 1}/{max_retries}): {response.status} - {error_text}")
 
                             # Wait before retrying
                             if attempt < max_retries - 1:
                                 await asyncio.sleep(retry_delay)
             except asyncio.TimeoutError:
-                print(f"Timeout error (attempt {attempt+1}/{max_retries}) - Ollama took too long to respond")
+                print(f"Timeout error (attempt {attempt + 1}/{max_retries}) - Ollama took too long to respond")
             except aiohttp.ClientError as e:
-                print(f"Connection error (attempt {attempt+1}/{max_retries}): {type(e).__name__} - {str(e)}")
+                print(f"Connection error (attempt {attempt + 1}/{max_retries}): {type(e).__name__} - {str(e)}")
             except Exception as e:
-                print(f"Unexpected error (attempt {attempt+1}/{max_retries}): {type(e).__name__} - {str(e)}")
+                print(f"Unexpected error (attempt {attempt + 1}/{max_retries}): {type(e).__name__} - {str(e)}")
                 import traceback
                 traceback.print_exc()
 
@@ -420,7 +435,8 @@ class PromptEvaluator:
                         feedback_content = f.read()
 
                     # Look for prompt text section in the feedback file
-                    prompt_section_match = re.search(r"Prompt(?:\s+\(excerpt\))?:\n(.*?)(?:\n\n|\Z)", feedback_content, re.DOTALL)
+                    prompt_section_match = re.search(r"Prompt(?:\s+\(excerpt\))?:\n(.*?)(?:\n\n|\Z)", feedback_content,
+                                                     re.DOTALL)
                     if prompt_section_match:
                         feedback_prompt_text = prompt_section_match.group(1).strip()
 
@@ -533,7 +549,8 @@ class PromptEvaluator:
                     existing_result['feedback_file'] = save_feedback_for_submission(existing_result)
                 return existing_result
             else:
-                print("Content hash mismatch - this is a different prompt with the same ID. Continuing with evaluation.")
+                print(
+                    "Content hash mismatch - this is a different prompt with the same ID. Continuing with evaluation.")
 
         # Evaluate the prompt
         correct_count = 0
@@ -763,8 +780,31 @@ class PromptEvaluator:
 
         print(f"Leaderboard updated and saved to {LEADERBOARD_FILE} and leaderboard.csv")
 
-    def generate_leaderboard_report(self):
-        """Generate a human-readable leaderboard report"""
+    def generate_leaderboard_report(self, include_single_prompt=False):
+        """Generate a human-readable leaderboard report
+
+        Args:
+            include_single_prompt: If True, includes results for a single prompt evaluation in the report
+        """
+        # If we're including a single prompt result and there are pending results, show them first
+        if include_single_prompt and self.pending_results:
+            single_result = self.pending_results[-1]  # Get the most recent pending result
+
+            print("\n=== SINGLE PROMPT EVALUATION RESULT ===")
+            print(f"Sender: {single_result['sender_name']}")
+            print(f"Prompt #{single_result['prompt_num']} ({single_result['prompt_type']})")
+            print(f"Accuracy: {single_result['accuracy']:.2f}%")
+            print(f"Sample Size: {single_result['sample_size']}")
+
+            # Print difficulty breakdown if available
+            if 'difficulty_accuracies' in single_result:
+                print("Performance by difficulty level:")
+                for level, acc in single_result['difficulty_accuracies'].items():
+                    print(f"  {level.capitalize()}: {acc:.2f}%")
+
+            print(f"Feedback file: {single_result.get('feedback_file', 'None')}")
+            print("")
+
         if not self.leaderboard:
             print("No entries in leaderboard")
             return
@@ -790,11 +830,20 @@ class PromptEvaluator:
                 f"{entry['submission_id']}"
             )
 
-    async def finalize(self):
-        """Perform final save operations and cleanup"""
+    async def finalize(self, display_results=True):
+        """Perform final save operations and cleanup
+
+        Args:
+            display_results: If True, display the results of the evaluation
+        """
         if self.pending_results:
             self.save_results()
             self.update_leaderboard()
+
+            if display_results:
+                # Show results for the single prompt evaluation we just did
+                self.generate_leaderboard_report(include_single_prompt=True)
+
             self.pending_results = []
 
     async def load_and_evaluate_prompts_from_directory(self, directory=VALID_PROMPTS_DIR):
@@ -814,7 +863,7 @@ class PromptEvaluator:
         save_counter = 0
 
         for i, prompt_file in enumerate(prompt_files):
-            print(f"\nEvaluating file {i+1}/{len(prompt_files)}: {prompt_file}")
+            print(f"\nEvaluating file {i + 1}/{len(prompt_files)}: {prompt_file}")
 
             try:
                 # Load the prompt from the file
@@ -829,7 +878,8 @@ class PromptEvaluator:
 
                 # Generate a submission ID based on the filename if not present
                 submission_id = prompt_data.get('submission_id',
-                                                hashlib.md5(prompt_file.encode()).hexdigest()[:20])  # Using 20 chars to reduce collision risk
+                                                hashlib.md5(prompt_file.encode()).hexdigest()[
+                                                :20])  # Using 20 chars to reduce collision risk
 
                 # Skip prompts without proper placeholder
                 if "%%REVIEW%%" not in prompt_text:
@@ -870,6 +920,75 @@ class PromptEvaluator:
         self.update_leaderboard()
 
         return results
+
+
+async def evaluate_prompt_from_file(evaluator, prompt_file_path):
+    """Evaluate a single prompt file
+
+    Args:
+        evaluator: The PromptEvaluator instance
+        prompt_file_path: Path to the prompt file
+
+    Returns:
+        Evaluation result
+    """
+    try:
+        # Check if file exists
+        if not os.path.exists(prompt_file_path):
+            print(f"Error: Prompt file {prompt_file_path} not found")
+            return None
+
+        # Load the prompt from the file
+        with open(prompt_file_path, 'r') as f:
+            try:
+                # Try to load as JSON first
+                prompt_data = json.load(f)
+
+                # Extract prompt details
+                sender_name = prompt_data.get('sender_name', 'LocalUser')
+                prompt_type = prompt_data.get('prompt_type', 'custom')
+                prompt_text = prompt_data.get('prompt_text', '')
+                prompt_num = prompt_data.get('prompt_num', 'custom')
+
+                # Generate a submission ID based on the filename
+                submission_id = prompt_data.get('submission_id',
+                                                hashlib.md5(os.path.basename(prompt_file_path).encode()).hexdigest()[
+                                                :20])
+
+            except json.JSONDecodeError:
+                # If not JSON, treat the entire file as plain text prompt
+                f.seek(0)  # Reset file pointer to beginning
+                prompt_text = f.read()
+
+                # Set default values for a plain text prompt
+                sender_name = "LocalUser"
+                prompt_type = "custom"
+                prompt_num = "custom"
+                submission_id = hashlib.md5(os.path.basename(prompt_file_path).encode()).hexdigest()[:20]
+
+                print(f"Loaded plain text prompt from {prompt_file_path}")
+
+        # Skip prompts without proper placeholder
+        if "%%REVIEW%%" not in prompt_text:
+            print(f"⚠️ Error: Prompt is missing the %%REVIEW%% placeholder")
+            return None
+
+        # Evaluate the prompt asynchronously
+        result = await evaluator.evaluate_prompt_async(
+            prompt_text,
+            prompt_type,
+            sender_name,
+            prompt_num,
+            submission_id
+        )
+
+        return result
+
+    except Exception as e:
+        print(f"Error processing file {prompt_file_path}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def generate_feedback(result, num_examples=10):
@@ -937,7 +1056,7 @@ def generate_feedback(result, num_examples=10):
                 sorted_group = sorted(group, key=lambda x: len(x.get('review', '')))
                 half = count // 2
                 feedback_examples.extend(sorted_group[:half])
-                feedback_examples.extend(sorted_group[-count+half:])
+                feedback_examples.extend(sorted_group[-count + half:])
     else:
         # If no difficulty levels, select examples as before
         sample_size = min(num_examples, len(incorrect_predictions))
@@ -1009,7 +1128,8 @@ def save_feedback_for_submission(result, output_dir=FEEDBACK_DIR):
     full_feedback += f"Dataset: Fixed sample dataset\n"
     full_feedback += f"Evaluated at: {result['evaluated_at']}\n"
     full_feedback += f"Sample size: {result.get('sample_size', len(result.get('predictions', [])))}\n\n"
-    full_feedback += f"Prompt (excerpt):\n{result['prompt_text'][:200]}...\n\n" if len(result['prompt_text']) > 200 else f"Prompt:\n{result['prompt_text']}\n\n"
+    full_feedback += f"Prompt (excerpt):\n{result['prompt_text'][:200]}...\n\n" if len(
+        result['prompt_text']) > 200 else f"Prompt:\n{result['prompt_text']}\n\n"
     full_feedback += feedback
 
     # Save to file
@@ -1027,6 +1147,7 @@ async def main_async():
     parser.add_argument("--api-url", type=str, default=OLLAMA_API_URL, help="Ollama API URL")
     parser.add_argument("--leaderboard", action="store_true", help="Just display leaderboard without evaluation")
     parser.add_argument("--no", "-n", action="store_true", help="Ask for confirmation before evaluation")
+    parser.add_argument("--file", type=str, help="Path to a single prompt file to evaluate")
     args = parser.parse_args()
 
     # Initialize the evaluator
@@ -1035,21 +1156,39 @@ async def main_async():
         ollama_url=args.api_url
     )
 
-    # Check remaining evaluations
-    remaining_count, remaining_prompts = await evaluator.check_remaining_evaluations(args.dir)
-    print(f"\n{remaining_count} prompts remaining to evaluate")
-
-    # Ask for confirmation only if --no flag is used
-    if remaining_count > 0 and not args.leaderboard and args.no:
-        response = input("\nContinue with evaluation? (y/n): ")
-        if response.lower() not in ['y', 'yes']:
-            print("Evaluation canceled by user")
-            return
-
     # Just display leaderboard if requested
     if args.leaderboard:
         evaluator.generate_leaderboard_report()
         return
+
+    # Evaluate a single file if specified
+    if args.file:
+        print(f"Evaluating single prompt file: {args.file}")
+        result = await evaluate_prompt_from_file(evaluator, args.file)
+
+        if result:
+            # Save results and update leaderboard
+            await evaluator.finalize(display_results=True)
+
+            print(f"\nSingle file evaluation completed!")
+            print(f"Results saved to {RESULTS_FILE}")
+            print(f"Leaderboard updated and saved to {LEADERBOARD_FILE}")
+            print(f"Check '{result.get('feedback_file', '')}' for detailed feedback")
+        else:
+            print(f"Failed to evaluate prompt file: {args.file}")
+
+        return
+
+    # If evaluating a directory, check remaining evaluations
+    remaining_count, remaining_prompts = await evaluator.check_remaining_evaluations(args.dir)
+    print(f"\n{remaining_count} prompts remaining to evaluate")
+
+    # Ask for confirmation only if --no flag is used
+    if remaining_count > 0 and args.no:
+        response = input("\nContinue with evaluation? (y/n): ")
+        if response.lower() not in ['y', 'yes']:
+            print("Evaluation canceled by user")
+            return
 
     # Load and evaluate prompts from the specified directory
     print(f"Loading and evaluating prompts from {args.dir}...")
