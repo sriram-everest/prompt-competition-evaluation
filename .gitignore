@@ -2,4 +2,3 @@
 *.iml
 venv
 .DS_Store
-fixed_evaluation_sample.pkl
