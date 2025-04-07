@@ -1,15 +1,3 @@
-#!/usr/bin/env python3
-"""
-Sentiment Classification Prompt Evaluator using Fixed Sample Dataset
-
-This script:
-1. Loads prompts from the valid_prompts directory
-2. Evaluates each prompt against a fixed dataset of examples
-3. Generates reports and leaderboard
-4. Always uses the same examples for consistent evaluation
-
-"""
-
 import argparse
 import asyncio
 import datetime
@@ -88,11 +76,6 @@ class PromptEvaluator:
 
         # Create a content hash cache for prompts
         self.content_hash_cache = {}
-
-    """
-    Add this function to the PromptEvaluator class in your modified evaluator script.
-    This will check and show how many prompts remain to be evaluated.
-    """
 
     async def check_remaining_evaluations(self, directory=VALID_PROMPTS_DIR):
         """
